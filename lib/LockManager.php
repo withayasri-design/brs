@@ -24,12 +24,19 @@ class LockManager
             unlink($lockPath);
         }
 
+        // Use fopen 'x' mode for atomic lock creation (fails if file already exists)
+        $handle = @fopen($lockPath, 'x');
+        if ($handle === false) {
+            return false;  // Race lost — another process created the lock first
+        }
+
         $payload = json_encode([
             'pid'        => getmypid(),
             'hostname'   => gethostname(),
             'started_at' => date('Y-m-d H:i:s'),
         ]);
-        file_put_contents($lockPath, $payload, LOCK_EX);
+        fwrite($handle, $payload);
+        fclose($handle);
         return true;
     }
 
@@ -66,7 +73,13 @@ class LockManager
             unlink($lockPath);
             return true;
         }
-        $age = (time() - strtotime($data['started_at'])) / 60;
+        $startedAt = strtotime($data['started_at']);
+        if ($startedAt === false) {
+            // Corrupt lock file — clear it
+            unlink($lockPath);
+            return true;
+        }
+        $age = (time() - $startedAt) / 60;
         if ($age > $maxMinutes && !$this->isProcessAlive((int) $data['pid'])) {
             unlink($lockPath);
             return true;
