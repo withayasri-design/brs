@@ -7,6 +7,7 @@ class BackupEngineTest extends TestCase
     private string $tmpAppDir;
     private string $tmpStorageDir;
     private int $testJobId;
+    private int $testStorageTargetId = 0;
 
     protected function setUp(): void
     {
@@ -20,6 +21,7 @@ class BackupEngineTest extends TestCase
         $pdo->prepare("INSERT INTO storage_targets (target_name,provider_type,config_json) VALUES('Test','local',:c)")
             ->execute(['c' => json_encode(['base_path' => $this->tmpStorageDir])]);
         $stId = (int) $pdo->lastInsertId();
+        $this->testStorageTargetId = $stId;
 
         $pdo->prepare("INSERT INTO backup_jobs (job_name,app_path,backup_type,encryption_enabled) VALUES('Test Job',:p,'files_only',0)")
             ->execute(['p' => $this->tmpAppDir]);
@@ -37,11 +39,28 @@ class BackupEngineTest extends TestCase
 
     protected function tearDown(): void
     {
-        Database::pdo()->prepare("DELETE FROM backup_jobs WHERE id=?")->execute([$this->testJobId]);
-        @array_map('unlink', glob($this->tmpAppDir . '/*'));
-        @rmdir($this->tmpAppDir);
-        @array_map('unlink', glob($this->tmpStorageDir . '/*'));
-        @rmdir($this->tmpStorageDir);
+        $pdo = Database::pdo();
+        // backup_logs and backup_files cascade from backup_jobs
+        $pdo->prepare("DELETE FROM backup_jobs WHERE id=?")->execute([$this->testJobId]);
+        // storage_targets does NOT cascade from backup_jobs — delete explicitly
+        if ($this->testStorageTargetId > 0) {
+            $pdo->prepare("DELETE FROM storage_targets WHERE id=?")->execute([$this->testStorageTargetId]);
+        }
+        // Clean up temp directories
+        $this->rmdirRecursive($this->tmpAppDir);
+        $this->rmdirRecursive($this->tmpStorageDir);
+    }
+
+    private function rmdirRecursive(string $dir): void
+    {
+        if (!is_dir($dir)) return;
+        foreach (new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        ) as $f) {
+            $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+        }
+        rmdir($dir);
     }
 
     public function testRunProducesSuccessfulBackupLog(): void

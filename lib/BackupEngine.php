@@ -20,10 +20,11 @@ class BackupEngine
         if (!$this->lockManager->acquire($jobId)) {
             throw new \RuntimeException("Job $jobId already running.", 3);
         }
-        $logId   = $this->createLog($jobId, $triggeredBy, $userId);
+        $logId   = 0;
         $workDir = $this->tempDir . DIRECTORY_SEPARATOR . "bk_{$jobId}_" . time();
         mkdir($workDir, 0700, true);
         try {
+            $logId     = $this->createLog($jobId, $triggeredBy, $userId);
             $adapters  = $this->loadAdapters($jobId);
             $this->checkDiskSpace($job, $workDir);
             $filePaths = [];
@@ -63,8 +64,9 @@ class BackupEngine
 
             $this->verifyBackup($filePaths, (bool) $job['encryption_enabled']);
 
-            $total  = 0;
-            $prefix = "{$jobId}/" . date('Y-m-d_His');
+            $total              = 0;
+            $prefix             = "{$jobId}/" . date('Y-m-d_His');
+            $remoteManifestPath = null;
             foreach ($adapters as ['adapter' => $ad, 'target_id' => $tid]) {
                 foreach ($filePaths as $type => $lp) {
                     $rp   = $prefix . '/' . basename($lp);
@@ -72,22 +74,33 @@ class BackupEngine
                     $sz   = filesize($lp) ?: 0;
                     $total += $sz;
                     $this->recordFile($logId, $tid, $type, $rp, $sz);
+                    if ($type === 'manifest' && $remoteManifestPath === null) {
+                        $remoteManifestPath = $rp;
+                    }
                 }
             }
 
             $this->finalizeLog($logId, 'success', $total,
                 $checksums['files'] ?? null, $checksums['database'] ?? null,
-                $manifest, (bool) $job['encryption_enabled']);
+                $remoteManifestPath ?? '', (bool) $job['encryption_enabled']);
 
-            (new RetentionPolicyService($this->pdo))->getExpiredBackupIds(
+            $svc     = new RetentionPolicyService($this->pdo);
+            $expired = $svc->getExpiredBackupIds(
                 $jobId, (int)$job['retention_daily'], (int)$job['retention_weekly'], (int)$job['retention_monthly']
             );
+            if (!empty($expired)) {
+                foreach ($expired as $expiredId) {
+                    $this->pdo->prepare('DELETE FROM backup_logs WHERE id=? AND is_pinned=0')->execute([$expiredId]);
+                }
+            }
             $this->notification->notifyBackupSuccess($jobId, $job['job_name'], 0, $total);
             $this->auditLogger->log('backup.success', $userId, 'backup_job', $jobId);
             return $logId;
         } catch (\Throwable $e) {
-            $this->pdo->prepare('UPDATE backup_logs SET status="failed",finished_at=NOW(),error_message=? WHERE id=?')
-                ->execute([$e->getMessage(), $logId]);
+            if ($logId > 0) {
+                $this->pdo->prepare("UPDATE backup_logs SET status='failed',finished_at=NOW(),error_message=? WHERE id=?")
+                    ->execute([$e->getMessage(), $logId]);
+            }
             $this->notification->notifyBackupFailure($jobId, $job['job_name'], $e->getMessage());
             throw $e;
         } finally {
@@ -195,6 +208,18 @@ class BackupEngine
             }
             $zip->close();
         }
+        if (isset($filePaths['files']) && $encrypted) {
+            $encPath = $filePaths['files'];  // this is already the .enc file path
+            if (!file_exists($encPath) || filesize($encPath) === 0) {
+                throw new \RuntimeException("Verification failed: encrypted archive missing or empty.");
+            }
+        }
+        if (isset($filePaths['database']) && $encrypted) {
+            $encPath = $filePaths['database'];
+            if (!file_exists($encPath) || filesize($encPath) === 0) {
+                throw new \RuntimeException("Verification failed: encrypted database dump missing or empty.");
+            }
+        }
     }
 
     private function createLog(int $jobId, string $by, ?int $userId): int
@@ -207,10 +232,10 @@ class BackupEngine
     private function finalizeLog(int $id, string $status, int $size, ?string $fc, ?string $dc, string $mp, bool $enc): void
     {
         $this->pdo->prepare(
-            'UPDATE backup_logs SET status=?,finished_at=NOW(),
+            "UPDATE backup_logs SET status=?,finished_at=NOW(),
              duration_seconds=TIMESTAMPDIFF(SECOND,started_at,NOW()),
              total_size_bytes=?,files_checksum=?,database_checksum=?,
-             manifest_path=?,is_encrypted=?,verification_status="passed" WHERE id=?'
+             manifest_path=?,is_encrypted=?,verification_status='passed' WHERE id=?"
         )->execute([$status, $size, $fc, $dc, $mp, $enc?1:0, $id]);
     }
 
