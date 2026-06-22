@@ -10,6 +10,11 @@ class Config
         self::$data = require $configPath;
     }
 
+    public static function merge(array $overrides): void
+    {
+        self::$data = array_merge(self::$data, $overrides);
+    }
+
     public static function get(string $key, mixed $default = null): mixed
     {
         $parts = explode('.', $key);

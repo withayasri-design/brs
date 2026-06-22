@@ -20,6 +20,7 @@ $currentPage = basename($_SERVER['SCRIPT_NAME'], '.php');
       ['storage-targets','bi-hdd-stack','Storage'],
       ['users','bi-people','Users'],
       ['audit-log','bi-journal-text','Audit Log'],
+      ['settings','bi-gear','Settings'],
     ] as [$page,$icon,$label]): ?>
     <li class="nav-item">
       <a href="/brs/public/<?=$page?>.php" class="nav-link <?=$currentPage===$page?'active':''?>">

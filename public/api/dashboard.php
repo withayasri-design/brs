@@ -37,11 +37,12 @@ if ($method === 'GET' && str_ends_with($uri, 'audit-logs')) {
     $limit  = min(100,max(1,(int)($_GET['limit']??50)));
     $where  = '1=1';
     $params = [];
-    if (!empty($_GET['user_id']))  { $where .= ' AND al.user_id=?';  $params[] = $_GET['user_id']; }
-    if (!empty($_GET['action']))   { $where .= ' AND al.action=?';   $params[] = $_GET['action']; }
-    if (!empty($_GET['from']))     { $where .= ' AND al.created_at>=?'; $params[] = $_GET['from']; }
-    if (!empty($_GET['to']))       { $where .= ' AND al.created_at<=?'; $params[] = $_GET['to']; }
-    $total = $pdo->prepare("SELECT COUNT(*) FROM audit_logs al WHERE $where");
+    if (!empty($_GET['user_id']))  { $where .= ' AND al.user_id=?';       $params[] = (int)$_GET['user_id']; }
+    if (!empty($_GET['user']))     { $where .= ' AND u.username LIKE ?';  $params[] = '%'.$_GET['user'].'%'; }
+    if (!empty($_GET['action']))   { $where .= ' AND al.action LIKE ?';   $params[] = '%'.$_GET['action'].'%'; }
+    if (!empty($_GET['from']))     { $where .= ' AND al.created_at>=?';   $params[] = $_GET['from']; }
+    if (!empty($_GET['to']))       { $where .= ' AND al.created_at<=?';   $params[] = $_GET['to'].' 23:59:59'; }
+    $total = $pdo->prepare("SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE $where");
     $total->execute($params);
     $stmt  = $pdo->prepare(
         "SELECT al.*,u.username FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE $where ORDER BY al.id DESC LIMIT ? OFFSET ?"

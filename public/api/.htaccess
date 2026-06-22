@@ -1,0 +1,19 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /brs/public/api/
+
+  # Route by first path segment, preserving query string
+  RewriteRule ^auth(/.*)?$              auth.php    [L,QSA]
+  RewriteRule ^jobs(/.*)?$              jobs.php    [L,QSA]
+  RewriteRule ^backup-logs(/.*)?$       backup.php  [L,QSA]
+  RewriteRule ^restore(/.*)?$           restore.php [L,QSA]
+  RewriteRule ^restore-logs(/.*)?$      restore.php [L,QSA]
+  RewriteRule ^storage-targets(/.*)?$   storage.php [L,QSA]
+  RewriteRule ^users(/.*)?$             users.php   [L,QSA]
+  RewriteRule ^dashboard(/.*)?$         dashboard.php [L,QSA]
+  RewriteRule ^audit-logs(/.*)?$        dashboard.php [L,QSA]
+  RewriteRule ^healthcheck(/.*)?$       dashboard.php [L,QSA]
+  RewriteRule ^settings(/.*)?$          settings.php  [L,QSA]
+</IfModule>

@@ -44,6 +44,13 @@ require_once __DIR__ . '/partials/nav.php';
       <label class="form-check-label">Encrypt</label>
     </div>
   </div>
+  <div class="col-12"><hr><h6>Storage Targets</h6></div>
+  <div class="col-12">
+    <div id="storage-targets-list" class="row g-2">
+      <div class="text-muted small">Loading storage targets…</div>
+    </div>
+    <div class="form-text">Select one or more destinations where backups will be stored. At least one is required.</div>
+  </div>
   <div class="col-12"><hr>
     <button type="submit" class="btn btn-primary me-2">Save Job</button>
     <a href="jobs.php" class="btn btn-secondary">Cancel</a>
@@ -51,6 +58,30 @@ require_once __DIR__ . '/partials/nav.php';
 </form>
 <script>
 const JOB_ID = <?= json_encode($id) ?>;
+let assignedTargetIds = [];
+
+async function loadStorageTargets() {
+  try {
+    const targets = await apiFetch('GET', 'storage-targets');
+    const wrap = document.getElementById('storage-targets-list');
+    if (!targets.length) {
+      wrap.innerHTML = '<div class="text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>No storage targets configured. <a href="storage-targets.php">Add one first.</a></div>';
+      return;
+    }
+    wrap.innerHTML = targets.map(t => `
+      <div class="col-md-4">
+        <div class="form-check border rounded p-2">
+          <input class="form-check-input" type="checkbox" value="${t.id}" id="st-${t.id}" name="storage_targets"
+            ${assignedTargetIds.includes(Number(t.id)) ? 'checked' : ''}>
+          <label class="form-check-label" for="st-${t.id}">
+            <strong>${t.target_name}</strong>
+            <span class="badge bg-secondary ms-1">${t.provider_type}</span>
+            ${!t.is_active ? '<span class="badge bg-warning ms-1">Inactive</span>' : ''}
+          </label>
+        </div>
+      </div>`).join('');
+  } catch(e) { showAlert(e.message); }
+}
 
 if (JOB_ID) {
   apiFetch('GET',`jobs/${JOB_ID}`).then(j => {
@@ -68,12 +99,17 @@ if (JOB_ID) {
     document.getElementById('encryption_enabled').checked = !!j.encryption_enabled;
     const exc = JSON.parse(j.exclude_patterns||'[]');
     document.getElementById('exclude_patterns').value = exc.join(',');
+    assignedTargetIds = (j.storage_target_ids || []).map(Number);
+    loadStorageTargets();
   }).catch(e => showAlert(e.message));
+} else {
+  loadStorageTargets();
 }
 
 document.getElementById('job-form').addEventListener('submit', async e => {
   e.preventDefault();
   const exc = document.getElementById('exclude_patterns').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const selectedTargets = [...document.querySelectorAll('input[name="storage_targets"]:checked')].map(el => parseInt(el.value));
   const body = {
     job_name: document.getElementById('job_name').value,
     backup_type: document.getElementById('backup_type').value,
@@ -88,6 +124,7 @@ document.getElementById('job-form').addEventListener('submit', async e => {
     retention_weekly: parseInt(document.getElementById('retention_weekly').value)||4,
     retention_monthly: parseInt(document.getElementById('retention_monthly').value)||6,
     encryption_enabled: document.getElementById('encryption_enabled').checked ? 1 : 0,
+    storage_target_ids: selectedTargets,
   };
   const pw = document.getElementById('db_password').value;
   if (pw) body.db_password = pw;

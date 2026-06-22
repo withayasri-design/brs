@@ -273,7 +273,46 @@ Query: `?user_id=&action=&from=&to=&page=1&limit=50`
 
 ---
 
-## 9. Error Codes มาตรฐาน
+## 9. Settings (Admin only)
+
+### GET `/api/settings`
+คืนค่า runtime settings ที่ override ได้ผ่าน Web UI (เก็บใน `config/runtime_settings.json`)
+```json
+{
+  "success": true,
+  "data": {
+    "notify_mode": "failure_only",
+    "line_notify_token_set": true,
+    "line_notify_token_masked": "****XyZa"
+  }
+}
+```
+
+### PUT `/api/settings`
+อัปเดต runtime settings (ค่าที่ไม่ส่งมาจะไม่ถูกเปลี่ยน)
+```json
+// Request
+{ "notify_mode": "all", "line_notify_token": "your_token_here" }
+
+// Response 200
+{ "success": true }
+```
+- ส่ง `"line_notify_token": ""` เพื่อลบ token ออก
+- ค่า `notify_mode` รับ: `"all"` | `"failure_only"` | `"none"`
+
+### POST `/api/settings/test-notify`
+ส่งการแจ้งเตือนทดสอบผ่าน LINE Notify
+```json
+// Request (optional — ถ้าไม่ส่งจะใช้ token ที่ config ไว้)
+{ "line_notify_token": "your_token_here" }
+
+// Response 200
+{ "success": true, "data": { "message": "Test notification sent" } }
+```
+
+---
+
+## 10. Error Codes มาตรฐาน
 
 | HTTP Status | error code | ความหมาย |
 |---|---|---|

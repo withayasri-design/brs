@@ -36,6 +36,9 @@ if ($method === 'GET' && $id) {
     $job = $stmt->fetch();
     if (!$job) api_response(false, null, 'NOT_FOUND', 404);
     unset($job['db_password_encrypted']);  // Never return encrypted password
+    $jst = $pdo->prepare('SELECT storage_target_id FROM job_storage_targets WHERE job_id=? ORDER BY priority');
+    $jst->execute([$id]);
+    $job['storage_target_ids'] = array_column($jst->fetchAll(), 'storage_target_id');
     api_response(true, $job);
 }
 
@@ -98,6 +101,13 @@ if ($method === 'PUT' && $id) {
          encryption_enabled=:ee,schedule_cron=:sc,is_active=:ia,
          retention_daily=:rd,retention_weekly=:rw,retention_monthly=:rm$setPw WHERE id=:id"
     )->execute($params);
+    if (isset($b['storage_target_ids'])) {
+        $pdo->prepare('DELETE FROM job_storage_targets WHERE job_id=?')->execute([$id]);
+        foreach ($b['storage_target_ids'] as $pri => $stId) {
+            $pdo->prepare('INSERT INTO job_storage_targets (job_id,storage_target_id,priority) VALUES(?,?,?)')
+                ->execute([$id, $stId, $pri + 1]);
+        }
+    }
     (new AuditLogger($pdo))->log('job.update', (int)$user['id'], 'backup_job', $id, api_ip());
     api_response(true, ['id' => $id]);
 }

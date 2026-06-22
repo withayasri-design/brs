@@ -4,6 +4,12 @@ ini_set('memory_limit', '256M');
 $rootDir = dirname(__DIR__, 2);
 require_once $rootDir . '/vendor/autoload.php';
 Config::init($rootDir . '/config/app.config.php');
+$_runtimeSettings = $rootDir . '/config/runtime_settings.json';
+if (is_readable($_runtimeSettings)) {
+    $overrides = json_decode(file_get_contents($_runtimeSettings), true) ?? [];
+    Config::merge($overrides);
+}
+unset($_runtimeSettings);
 
 // Session init
 $timeout = Config::get('session_timeout', 1800);
