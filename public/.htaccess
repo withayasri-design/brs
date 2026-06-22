@@ -1,0 +1,9 @@
+Options -Indexes
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "DENY"
+Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net;"
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /brs/public/
+</IfModule>
