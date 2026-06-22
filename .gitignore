@@ -1,0 +1,11 @@
+﻿.superpowers/
+vendor/
+temp/*
+!temp/.gitkeep
+!temp/locks/.gitkeep
+logs/*
+!logs/.gitkeep
+config/app.config.php
+config/storage-providers.php
+config/encryption.key
+
