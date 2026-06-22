@@ -69,7 +69,7 @@ class RestoreEngine
         $job   = $this->loadJob((int) $log['job_id']);
         $files = $this->loadFiles($backupLogId);
         $v     = $this->validate($backupLogId);
-        if (isset($v['checksum_valid']) && !$v['checksum_valid'] && !($v['manifest']['encrypted'] ?? false)) {
+        if (isset($v['checksum_valid']) && !$v['checksum_valid']) {
             throw new \RuntimeException("Backup checksum mismatch — restore aborted.", 422);
         }
         $rlId    = $this->createRestoreLog($log['job_id'], $backupLogId, $mode, $restoreTarget, $altPath, $altDb, $userId);
@@ -158,7 +158,7 @@ class RestoreEngine
             escapeshellarg($job['db_username']),
             escapeshellarg($pw),
             escapeshellarg($tgtDb),
-            $sql
+            $sql ? "\"$sql\"" : ""
         );
         exec($cmd, $out, $rc);
         if ($rc !== 0) throw new \RuntimeException("mysql import failed: " . implode("\n", $out));
