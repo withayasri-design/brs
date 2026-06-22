@@ -21,9 +21,9 @@ if ($method === 'POST' && !$id) {
     api_check_csrf();
     $b   = api_json_body();
     $enc = new EncryptionService(Config::get('encryption_key_path'));
-    $cfg = json_encode($enc->encryptString(json_encode($b['config'] ?? []), 'credential'));
+    $configJson = $enc->encryptString(json_encode($b['config'] ?? []), 'credential');
     $pdo->prepare('INSERT INTO storage_targets (target_name,provider_type,config_json) VALUES(?,?,?)')
-        ->execute([$b['target_name'], $b['provider_type'], $b['config'] ? json_encode($b['config']) : '{}']);
+        ->execute([$b['target_name'], $b['provider_type'], $configJson]);
     $newId = (int)$pdo->lastInsertId();
     (new AuditLogger($pdo))->log('storage.create',(int)$user['id'],'storage_target',$newId,api_ip());
     api_response(true, ['id' => $newId], null, 201);
@@ -32,9 +32,11 @@ if ($method === 'POST' && !$id) {
 // PUT /api/storage-targets/{id}
 if ($method === 'PUT' && $id) {
     api_require_role('admin'); api_check_csrf();
-    $b = api_json_body();
+    $b   = api_json_body();
+    $enc = new EncryptionService(Config::get('encryption_key_path'));
+    $configJson = $enc->encryptString(json_encode($b['config'] ?? []), 'credential');
     $pdo->prepare('UPDATE storage_targets SET target_name=?,provider_type=?,config_json=?,is_active=? WHERE id=?')
-        ->execute([$b['target_name'],$b['provider_type'],json_encode($b['config']??[]),$b['is_active']??1,$id]);
+        ->execute([$b['target_name'],$b['provider_type'],$configJson,$b['is_active']??1,$id]);
     api_response(true, ['id' => $id]);
 }
 
