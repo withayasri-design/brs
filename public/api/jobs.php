@@ -25,7 +25,8 @@ if ($method === 'GET' && !$id) {
          FROM backup_jobs bj WHERE bj.job_name LIKE ? ORDER BY bj.id LIMIT ? OFFSET ?'
     );
     $stmt->execute([$search, $limit, $offset]);
-    api_response(true, ['items' => $stmt->fetchAll(), 'total' => (int)$total->fetchColumn(), 'page' => $page, 'limit' => $limit]);
+    $items = array_map(function($row) { unset($row['db_password_encrypted']); return $row; }, $stmt->fetchAll());
+    api_response(true, ['items' => $items, 'total' => (int)$total->fetchColumn(), 'page' => $page, 'limit' => $limit]);
 }
 
 // GET /api/jobs/{id}
