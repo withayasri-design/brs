@@ -58,7 +58,11 @@ class LocalAdapter implements StorageAdapterInterface
         if (file_put_contents($testFile, 'ok') === false) {
             return ['status' => 'failed', 'message' => 'Cannot write to storage directory'];
         }
+        $readBack = file_get_contents($testFile);
         unlink($testFile);
+        if ($readBack !== 'ok') {
+            return ['status' => 'failed', 'message' => 'Write/read verification failed'];
+        }
         return ['status' => 'success', 'message' => 'Local storage accessible, read/write OK'];
     }
 
