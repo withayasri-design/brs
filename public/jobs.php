@@ -32,6 +32,7 @@ require_once __DIR__ . '/partials/nav.php';
         <td><span class="badge status-badge ${j.last_backup_status||''}">${j.last_backup_status||'Never'}</span></td>
         <td>
           <button class="btn btn-sm btn-outline-success me-1" onclick="runNow(${j.id})" title="Backup Now"><i class="bi bi-play-fill"></i></button>
+          <a href="history.php?job_id=${j.id}" class="btn btn-sm btn-outline-secondary me-1" title="View History"><i class="bi bi-clock-history"></i></a>
           <a href="job-edit.php?id=${j.id}" class="btn btn-sm btn-outline-primary me-1" title="Edit"><i class="bi bi-pencil"></i></a>
           <button class="btn btn-sm btn-outline-danger" onclick="deleteJob(${j.id},'${j.job_name}')" title="Delete"><i class="bi bi-trash"></i></button>
         </td>

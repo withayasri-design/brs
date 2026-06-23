@@ -5,6 +5,104 @@ $method = $_SERVER['REQUEST_METHOD'];
 $uri    = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
 $pdo    = Database::pdo();
 
+// GET /api/jobs/export
+if ($method === 'GET' && str_ends_with($uri, 'jobs/export')) {
+    api_require_role('admin');
+    $jobs = $pdo->query(
+        'SELECT bj.*, GROUP_CONCAT(st.target_name ORDER BY jst.priority SEPARATOR ",") AS storage_target_names
+         FROM backup_jobs bj
+         LEFT JOIN job_storage_targets jst ON jst.job_id=bj.id
+         LEFT JOIN storage_targets st ON st.id=jst.storage_target_id
+         GROUP BY bj.id ORDER BY bj.id'
+    )->fetchAll();
+    $export = ['exported_at' => date('c'), 'brs_version' => '1.0', 'jobs' => array_map(function ($j) {
+        return [
+            'job_name'            => $j['job_name'],
+            'description'         => $j['description'],
+            'app_path'            => $j['app_path'],
+            'include_patterns'    => json_decode($j['include_patterns'] ?? '["*"]', true),
+            'exclude_patterns'    => json_decode($j['exclude_patterns'] ?? '[]', true),
+            'db_host'             => $j['db_host'],
+            'db_port'             => (int)$j['db_port'],
+            'db_name'             => $j['db_name'],
+            'db_username'         => $j['db_username'],
+            'backup_type'         => $j['backup_type'],
+            'encryption_enabled'  => (bool)$j['encryption_enabled'],
+            'schedule_cron'       => $j['schedule_cron'],
+            'retention_daily'     => (int)$j['retention_daily'],
+            'retention_weekly'    => (int)$j['retention_weekly'],
+            'retention_monthly'   => (int)$j['retention_monthly'],
+            'is_active'           => (bool)$j['is_active'],
+            'storage_target_names'=> $j['storage_target_names'] ? explode(',', $j['storage_target_names']) : [],
+            // db_password intentionally omitted — must be re-entered on import
+        ];
+    }, $jobs)];
+    api_response(true, $export);
+}
+
+// POST /api/jobs/import
+if ($method === 'POST' && str_ends_with($uri, 'jobs/import')) {
+    api_require_role('admin');
+    api_check_csrf();
+    $b       = api_json_body();
+    $jobs    = $b['jobs'] ?? [];
+    $execute = !empty($b['execute']);
+    if (empty($jobs) || !is_array($jobs)) api_response(false, null, 'jobs array required', 400);
+
+    // Pre-flight: resolve storage target names to IDs
+    $allTargets = $pdo->query('SELECT id, target_name FROM storage_targets')->fetchAll();
+    $targetMap  = array_column($allTargets, 'id', 'target_name');
+
+    $preview = [];
+    foreach ($jobs as $j) {
+        $resolvedIds = [];
+        $missing     = [];
+        foreach ($j['storage_target_names'] ?? [] as $name) {
+            isset($targetMap[$name]) ? ($resolvedIds[] = $targetMap[$name]) : ($missing[] = $name);
+        }
+        $preview[] = [
+            'job_name'             => $j['job_name'],
+            'resolved_target_ids'  => $resolvedIds,
+            'missing_targets'      => $missing,
+            'will_create'          => $execute,
+        ];
+    }
+
+    if (!$execute) {
+        api_response(true, ['preview' => $preview, 'execute' => false]);
+    }
+
+    $enc     = new EncryptionService(Config::get('encryption_key_path'));
+    $created = [];
+    foreach ($jobs as $idx => $j) {
+        $resolvedIds = $preview[$idx]['resolved_target_ids'];
+        $pdo->prepare(
+            'INSERT INTO backup_jobs (job_name,description,app_path,include_patterns,exclude_patterns,
+             db_host,db_port,db_name,db_username,backup_type,encryption_enabled,schedule_cron,
+             retention_daily,retention_weekly,retention_monthly,is_active,created_by)
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+        )->execute([
+            $j['job_name'], $j['description'] ?? null, $j['app_path'] ?? null,
+            json_encode($j['include_patterns'] ?? ['*']),
+            json_encode($j['exclude_patterns'] ?? []),
+            $j['db_host'] ?? null, $j['db_port'] ?? 3306,
+            $j['db_name'] ?? null, $j['db_username'] ?? null,
+            $j['backup_type'] ?? 'both', $j['encryption_enabled'] ? 1 : 0,
+            $j['schedule_cron'] ?? null,
+            $j['retention_daily'] ?? 7, $j['retention_weekly'] ?? 4, $j['retention_monthly'] ?? 6,
+            $j['is_active'] ?? 1, (int)$user['id'],
+        ]);
+        $newId = (int)$pdo->lastInsertId();
+        foreach ($resolvedIds as $pri => $tid) {
+            $pdo->prepare('INSERT INTO job_storage_targets (job_id,storage_target_id,priority) VALUES(?,?,?)')
+                ->execute([$newId, $tid, $pri + 1]);
+        }
+        (new AuditLogger($pdo))->log('job.import', (int)$user['id'], 'backup_job', $newId, api_ip());
+        $created[] = ['id' => $newId, 'job_name' => $j['job_name']];
+    }
+    api_response(true, ['created' => $created, 'execute' => true], null, 201);
+}
+
 // Extract ID from URI: /api/jobs/{id} or /api/jobs/{id}/run
 preg_match('#api/jobs(?:/(\d+)(?:/(run))?)?$#', $uri, $m);
 $id     = isset($m[1]) ? (int)$m[1] : null;

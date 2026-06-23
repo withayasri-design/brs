@@ -86,6 +86,26 @@ Query params: `?page=1&limit=20&search=`
 { "confirm_name": "HR2000 Production" }
 ```
 
+### GET `/api/jobs/export` — Export all job configs as JSON (Admin)
+Returns all job definitions without passwords, for migration to a new server.
+Storage targets are referenced by name (not ID) so they can be matched on import.
+
+### POST `/api/jobs/import` — Import job configs from JSON (Admin)
+```json
+// Request — preview only (no jobs created)
+{ "jobs": [...], "execute": false }
+
+// Request — actually create jobs
+{ "jobs": [...], "execute": true }
+
+// Response (preview)
+{ "success": true, "data": { "preview": [{ "job_name": "...", "resolved_target_ids": [1], "missing_targets": [], "will_create": false }], "execute": false } }
+
+// Response (execute) 201
+{ "success": true, "data": { "created": [{ "id": 18, "job_name": "..." }], "execute": true } }
+```
+Note: `db_password` is never exported and must be set manually after import.
+
 ### POST `/api/jobs/{id}/run` — สั่ง Backup Now
 ```json
 // Response 202 (accepted, รันแบบ background)

@@ -11,7 +11,7 @@ $jobId = isset($_GET['job_id']) ? (int)$_GET['job_id'] : null;
 <?php if (!$jobId): ?>
 <div class="alert alert-info">Select a job from <a href="jobs.php">Jobs</a> to view its history.</div>
 <?php else: ?>
-<div id="job-header" class="mb-3 text-muted small"></div>
+<div id="job-header" class="mb-3"></div>
 <div class="card">
   <div class="card-body p-0">
     <table class="table table-hover mb-0">
@@ -26,23 +26,32 @@ $jobId = isset($_GET['job_id']) ? (int)$_GET['job_id'] : null;
 const JOB_ID = <?= json_encode($jobId) ?>;
 (async () => {
   try {
-    const d = await apiFetch('GET',`jobs/${JOB_ID}/history?limit=50`);
+    const [job, d] = await Promise.all([
+      apiFetch('GET', `jobs/${JOB_ID}`),
+      apiFetch('GET', `jobs/${JOB_ID}/history?limit=50`),
+    ]);
+    document.getElementById('job-header').innerHTML =
+      `<h5 class="mb-0">${job.job_name}</h5>
+       <div class="text-muted small">${job.app_path||''} ${job.db_name ? '· DB: '+job.db_name : ''} · Schedule: <code>${job.schedule_cron||'Manual'}</code></div>`;
     const tbody = document.getElementById('history-body');
     if (!d.items.length) { tbody.innerHTML='<tr><td colspan="8" class="text-center text-muted py-4">No backups yet</td></tr>'; return; }
-    tbody.innerHTML = d.items.map(b => `
-      <tr>
+    tbody.innerHTML = d.items.map(b => {
+      const dur = (b.finished_at && b.started_at)
+        ? Math.round((new Date(b.finished_at)-new Date(b.started_at))/1000)+'s' : '—';
+      return `<tr>
         <td>${b.id}</td>
         <td>${new Date(b.started_at).toLocaleString('th-TH')}</td>
-        <td>—</td>
+        <td>${dur}</td>
         <td>${b.total_size_bytes ? formatBytes(b.total_size_bytes) : '—'}</td>
         <td><span class="badge status-badge ${b.status}">${b.status}</span></td>
         <td><span class="badge bg-${b.verification_status==='passed'?'success':'secondary'}">${b.verification_status}</span></td>
         <td>${b.is_pinned ? '<i class="bi bi-pin-fill text-warning"></i>' : ''}</td>
         <td>
           ${b.status==='success'?`<a href="restore.php?backup_log_id=${b.id}" class="btn btn-sm btn-outline-warning me-1" title="Restore"><i class="bi bi-arrow-counterclockwise"></i></a>`:''}
-          <button class="btn btn-sm btn-outline-secondary" onclick="pinBackup(${b.id})" title="Pin"><i class="bi bi-pin"></i></button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="pinBackup(${b.id})" title="${b.is_pinned?'Unpin':'Pin'}"><i class="bi bi-pin${b.is_pinned?'-fill':''}"></i></button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
   } catch(e) { showAlert(e.message); }
 })();
 

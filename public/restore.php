@@ -8,6 +8,9 @@ $backupLogId = isset($_GET['backup_log_id']) ? (int)$_GET['backup_log_id'] : nul
 <?php if (!$backupLogId): ?>
 <div class="alert alert-info">Select a backup from <a href="history.php">Backup History</a> to restore.</div>
 <?php else: ?>
+<div class="card mb-3 border-0 bg-light" id="backup-info-card">
+  <div class="card-body py-2 text-muted small">Loading backup info…</div>
+</div>
 <div class="card mb-4">
   <div class="card-header">Step 1 — Validate Backup</div>
   <div class="card-body">
@@ -55,6 +58,27 @@ $backupLogId = isset($_GET['backup_log_id']) ? (int)$_GET['backup_log_id'] : nul
 <div id="restore-result" class="mt-3"></div>
 <script>
 const BACKUP_LOG_ID = <?= json_encode($backupLogId) ?>;
+
+// Load and display backup info immediately
+(async () => {
+  try {
+    const log = await apiFetch('GET', `backup-logs/${BACKUP_LOG_ID}`);
+    const job = await apiFetch('GET', `jobs/${log.job_id}`);
+    const size = log.total_size_bytes ? formatBytes(log.total_size_bytes) : '—';
+    const date = new Date(log.started_at).toLocaleString('th-TH');
+    document.getElementById('backup-info-card').innerHTML =
+      `<div class="card-body py-2">
+         <strong>${job.job_name}</strong>
+         <span class="text-muted ms-2">#${log.id} · ${date} · ${size}
+         ${log.is_encrypted ? '<span class="badge bg-secondary ms-1"><i class="bi bi-lock-fill"></i> Encrypted</span>' : ''}
+         </span>
+         <a href="history.php?job_id=${log.job_id}" class="ms-3 small">← Back to history</a>
+       </div>`;
+    document.getElementById('btn-validate').textContent = '';
+    document.getElementById('btn-validate').innerHTML =
+      `<i class="bi bi-search me-1"></i>Validate — ${job.job_name} #${log.id}`;
+  } catch(e) { /* non-fatal */ }
+})();
 document.getElementById('btn-validate').addEventListener('click', async () => {
   try {
     const r = await apiFetch('POST','restore/validate',{backup_log_id:BACKUP_LOG_ID});
