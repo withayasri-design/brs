@@ -69,9 +69,9 @@ class BackupEngine
             $remoteManifestPath = null;
             foreach ($adapters as ['adapter' => $ad, 'target_id' => $tid]) {
                 foreach ($filePaths as $type => $lp) {
-                    $rp   = $prefix . '/' . basename($lp);
-                    $ad->upload($lp, $rp);
-                    $sz   = filesize($lp) ?: 0;
+                    $rp = $prefix . '/' . basename($lp);
+                    $this->uploadWithRetry($ad, $lp, $rp);
+                    $sz = filesize($lp) ?: 0;
                     $total += $sz;
                     $this->recordFile($logId, $tid, $type, $rp, $sz);
                     if ($type === 'manifest' && $remoteManifestPath === null) {
@@ -88,10 +88,9 @@ class BackupEngine
             $expired = $svc->getExpiredBackupIds(
                 $jobId, (int)$job['retention_daily'], (int)$job['retention_weekly'], (int)$job['retention_monthly']
             );
-            if (!empty($expired)) {
-                foreach ($expired as $expiredId) {
-                    $this->pdo->prepare('DELETE FROM backup_logs WHERE id=? AND is_pinned=0')->execute([$expiredId]);
-                }
+            foreach ($expired as $expiredId) {
+                $this->deleteBackupFiles($expiredId, $adapters);
+                $this->pdo->prepare('DELETE FROM backup_logs WHERE id=? AND is_pinned=0')->execute([$expiredId]);
             }
             $this->notification->notifyBackupSuccess($jobId, $job['job_name'], 0, $total);
             $this->auditLogger->log('backup.success', $userId, 'backup_job', $jobId);
@@ -147,6 +146,11 @@ class BackupEngine
         if ($free === false) return;
         $est = ($job['app_path'] && is_dir($job['app_path'])) ? $this->dirSize($job['app_path']) : 0;
         $req = (int)($est * 1.2) + 104857600;
+        // Warn when free space is below 20% of total, even if current backup can proceed
+        $total = disk_total_space($dir);
+        if ($total && $free < $total * 0.20) {
+            $this->notification->notifyDiskLow('Local Temp', (int)$free);
+        }
         if ($free < $req) {
             throw new \RuntimeException(sprintf("Insufficient disk space: %.1fGB free, %.1fGB required.", $free/1073741824, $req/1073741824), 2);
         }
@@ -244,6 +248,38 @@ class BackupEngine
         $map = ['files'=>'files_archive','database'=>'database_dump','manifest'=>'manifest'];
         $this->pdo->prepare('INSERT INTO backup_files (backup_log_id,storage_target_id,file_type,remote_path,size_bytes) VALUES(?,?,?,?,?)')
             ->execute([$logId, $tid, $map[$type] ?? $type, $rp, $sz]);
+    }
+
+    private function uploadWithRetry(StorageAdapterInterface $adapter, string $local, string $remote, int $maxAttempts = 3): void
+    {
+        $attempt = 0;
+        while (true) {
+            try {
+                $adapter->upload($local, $remote);
+                return;
+            } catch (\Throwable $e) {
+                $attempt++;
+                if ($attempt >= $maxAttempts) throw $e;
+                sleep((int) (2 ** $attempt)); // 2s, 4s exponential backoff
+            }
+        }
+    }
+
+    private function deleteBackupFiles(int $logId, array $adapters): void
+    {
+        $stmt = $this->pdo->prepare('SELECT storage_target_id, remote_path FROM backup_files WHERE backup_log_id=?');
+        $stmt->execute([$logId]);
+        $files = $stmt->fetchAll();
+        $adapterMap = [];
+        foreach ($adapters as ['adapter' => $ad, 'target_id' => $tid]) {
+            $adapterMap[$tid] = $ad;
+        }
+        foreach ($files as $file) {
+            $tid = $file['storage_target_id'];
+            if (isset($adapterMap[$tid])) {
+                try { $adapterMap[$tid]->delete($file['remote_path']); } catch (\Throwable) {}
+            }
+        }
     }
 
     private function isExcluded(string $rel, array $patterns): bool
