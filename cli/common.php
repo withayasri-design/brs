@@ -5,6 +5,12 @@ set_time_limit(0);
 $rootDir = dirname(__DIR__);
 require_once $rootDir . '/vendor/autoload.php';
 Config::init($rootDir . '/config/app.config.php');
+$_runtimeSettings = $rootDir . '/config/runtime_settings.json';
+if (is_readable($_runtimeSettings)) {
+    $overrides = json_decode(file_get_contents($_runtimeSettings), true) ?? [];
+    Config::merge($overrides);
+}
+unset($_runtimeSettings);
 
 function cli_parse_args(array $argv): array
 {

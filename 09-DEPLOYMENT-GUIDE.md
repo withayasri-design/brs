@@ -56,17 +56,26 @@ C:\xampp\mysql\bin\mysql.exe -u root -p < C:\xampp\htdocs\brs\sql\schema.sql
 (ใช้ DDL จาก `04-DATABASE-SCHEMA.md`)
 
 ### Step 4: ตั้งค่า Config
-คัดลอก `config/app.config.example.php` เป็น `config/app.config.php` แล้วแก้ไข:
+คัดลอก `config/app.config.example.php` เป็น `config/app.config.php` แล้วแก้ไขค่าที่จำเป็น:
 ```php
 return [
-    'db_host' => 'localhost',
-    'db_name' => 'brs_system',
-    'db_user' => 'brs_app',          // แนะนำสร้าง MySQL user เฉพาะ ไม่ใช้ root
-    'db_pass' => 'STRONG_PASSWORD_HERE',
-    'session_timeout_minutes' => 30,
-    'line_notify_default_token' => '', // ตั้งเป็นค่า default ขององค์กร (override ได้ต่อ user)
-    'mysqldump_path' => 'C:\\xampp\\mysql\\bin\\mysqldump.exe',
-    'mysql_path' => 'C:\\xampp\\mysql\\bin\\mysql.exe',
+    'db' => [
+        'host'     => 'localhost',
+        'port'     => 3306,
+        'dbname'   => 'brs_system',
+        'username' => 'brs_app',    // แนะนำสร้าง MySQL user เฉพาะ ไม่ใช้ root
+        'password' => 'STRONG_PASSWORD_HERE',
+        'charset'  => 'utf8mb4',
+    ],
+    'encryption_key_path' => __DIR__ . '/encryption.key',
+    'mysqldump_path'      => 'C:\\xampp\\mysql\\bin\\mysqldump.exe',
+    'mysql_path'          => 'C:\\xampp\\mysql\\bin\\mysql.exe',
+    'temp_dir'            => __DIR__ . '/../temp',
+    'logs_dir'            => __DIR__ . '/../logs',
+    'storage_dir'         => __DIR__ . '/../storage',
+    'session_timeout'     => 1800,
+    'notify_mode'         => 'failure_only', // 'all' | 'failure_only' | 'none'
+    'line_notify_token'   => null,           // ตั้งค่าได้ภายหลังผ่าน Web UI → Settings
 ];
 ```
 
@@ -92,11 +101,12 @@ icacls "C:\xampp\htdocs\brs\logs" /inheritance:r /grant:r "NETWORK SERVICE:(OI)(
 ```
 (ปรับชื่อ account ตาม service account จริงที่ใช้รัน Apache)
 
-### Step 7: สร้าง Admin User แรก
+### Step 7: โหลด Seed Data (Admin User เริ่มต้น)
 ```bash
-C:\xampp\php\php.exe C:\xampp\htdocs\brs\cli\create-admin.php --username=admin --password=ChangeMe123!
+C:\xampp\mysql\bin\mysql.exe -u root -p brs_system < C:\xampp\htdocs\brs\sql\seed.sql
 ```
-**เปลี่ยนรหัสผ่านทันที** หลัง login ครั้งแรกผ่าน Web UI
+ระบบจะสร้าง admin user เริ่มต้น: username `admin` / password `Admin@1234`
+**เปลี่ยนรหัสผ่านทันที** หลัง login ครั้งแรกผ่าน Web UI → Users
 
 ### Step 8: ทดสอบ Healthcheck
 ```bash
@@ -136,9 +146,10 @@ C:\xampp\php\php.exe C:\xampp\htdocs\brs\cli\healthcheck.php
 
 ## 4. Upgrade / Migration ไปเครื่องใหม่
 
-1. Export การตั้งค่า Job ทั้งหมดเป็น JSON ผ่าน Web UI (Settings → Export Configuration)
-2. Backup ฐานข้อมูล `brs_system` เอง (ใช้ BRS backup ตัวมันเองตามที่แนะนำใน SECURITY.md ข้อ 5.6)
-3. ติดตั้งระบบใหม่ตามขั้นตอนข้างต้นบนเครื่องใหม่
-4. คัดลอก `encryption.key` เดิมมาด้วย (จำเป็นเพื่อ decrypt backup เก่าที่ยังเก็บอยู่)
-5. Import การตั้งค่า Job จาก JSON ที่ export ไว้
-6. ทดสอบ verify backup ประวัติเก่าว่ายัง decrypt/extract ได้ปกติ
+1. Backup ฐานข้อมูล `brs_system` ด้วย mysqldump (หรือใช้ BRS backup ตัวมันเอง)
+2. คัดลอก `config/encryption.key` ออกมาเก็บไว้ — จำเป็นเพื่อ decrypt backup เก่า
+3. ติดตั้งระบบใหม่ตามขั้นตอนข้างต้นบนเครื่องใหม่ (Step 1–6)
+4. แทน Step 5 (generate-key): คัดลอก `encryption.key` เดิมมาแทน **อย่าสร้างใหม่**
+5. Restore ฐานข้อมูล `brs_system` บนเครื่องใหม่
+6. คัดลอก `config/runtime_settings.json` (ถ้ามี) มาด้วยเพื่อคง LINE Notify config
+7. ทดสอบ verify backup ประวัติเก่าว่ายัง decrypt/extract ได้ปกติ

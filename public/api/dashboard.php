@@ -45,10 +45,16 @@ if ($method === 'GET' && str_ends_with($uri, 'audit-logs')) {
     $total = $pdo->prepare("SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE $where");
     $total->execute($params);
     $stmt  = $pdo->prepare(
-        "SELECT al.*,u.username FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE $where ORDER BY al.id DESC LIMIT ? OFFSET ?"
+        "SELECT al.id, al.user_id, al.action, al.target_type, al.target_id, al.ip_address,
+                al.detail_json AS detail, al.created_at, u.username AS user
+         FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id WHERE $where ORDER BY al.id DESC LIMIT ? OFFSET ?"
     );
     $stmt->execute(array_merge($params, [$limit, ($page-1)*$limit]));
-    api_response(true, ['items' => $stmt->fetchAll(), 'total' => (int)$total->fetchColumn(), 'page' => $page]);
+    $items = array_map(function ($row) {
+        $row['detail'] = $row['detail'] !== null ? json_decode($row['detail'], true) : null;
+        return $row;
+    }, $stmt->fetchAll());
+    api_response(true, ['items' => $items, 'total' => (int)$total->fetchColumn(), 'page' => $page]);
 }
 
 // GET /api/healthcheck

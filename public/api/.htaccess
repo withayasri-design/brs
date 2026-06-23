@@ -4,6 +4,9 @@ Options -Indexes
   RewriteEngine On
   RewriteBase /brs/public/api/
 
+  # Specific sub-routes first (must precede their parent segment rules)
+  RewriteRule ^jobs/[0-9]+/history$     backup.php  [L,QSA]
+
   # Route by first path segment, preserving query string
   RewriteRule ^auth(/.*)?$              auth.php    [L,QSA]
   RewriteRule ^jobs(/.*)?$              jobs.php    [L,QSA]
