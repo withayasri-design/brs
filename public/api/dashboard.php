@@ -14,11 +14,12 @@ if ($method === 'GET' && str_ends_with($uri, 'dashboard/summary')) {
     $upcoming   = $pdo->query(
         'SELECT id AS job_id,job_name,schedule_cron FROM backup_jobs WHERE is_active=1 AND schedule_cron IS NOT NULL LIMIT 5'
     )->fetchAll();
-    $storage    = $pdo->query('SELECT id,target_name FROM storage_targets WHERE is_active=1')->fetchAll();
+    $storage    = $pdo->query('SELECT * FROM storage_targets WHERE is_active=1')->fetchAll();
+    $enc        = new EncryptionService(Config::get('encryption_key_path'));
     $storageUsage = [];
     foreach ($storage as $st) {
         try {
-            $ad   = StorageAdapterFactory::create($st);
+            $ad   = StorageAdapterFactory::create($st, $enc);
             $free = $ad->getFreeSpace();
             $storageUsage[] = ['target_name' => $st['target_name'], 'free_bytes' => $free];
         } catch (\Exception) {}
