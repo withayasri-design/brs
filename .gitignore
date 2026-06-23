@@ -8,4 +8,9 @@ logs/*
 config/app.config.php
 config/storage-providers.php
 config/encryption.key
+config/runtime_settings.json
+storage/*/
+node_modules/
+test-screenshots/
+package-lock.json
 
